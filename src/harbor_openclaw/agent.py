@@ -180,6 +180,51 @@ class OpenClaw(BaseInstalledAgent):
 
         return None
 
+    def _build_write_openclaw_config_command(self) -> str:
+        """Write a global openclaw.json granting the in-container agent
+        full fs + exec permissions.
+
+        OpenClaw ships with some tool surfaces (fs read/write/apply_patch,
+        exec applyPatch, PDF processing) that are gated by a
+        ``workspaceOnly`` flag. Even though ``workspaceOnly`` defaults to
+        false, we write it explicitly so:
+
+        - Running as a non-default user inside the container doesn't
+          accidentally inherit a stricter policy.
+        - Future OpenClaw versions that flip the default cannot silently
+          break existing Harbor tasks.
+        - Task authors see "the agent has permissions X, Y, Z" as an
+          adapter-level guarantee, not something each task's Dockerfile
+          has to duplicate (which is what the openclaw-tasks PR #31
+          workaround was doing per-task).
+
+        Scope:
+
+        - ``tools.fs.workspaceOnly: false`` — agent may read/write
+          outside its own workspace. Required for tasks that use
+          ``/data/*`` or ``/app/*`` scratch spaces.
+        - ``tools.exec.applyPatch.workspaceOnly: false`` — agent may
+          ``apply_patch`` outside workspace (same rationale).
+
+        All agent activity is still confined to the container, which is
+        the real security boundary. These flags only loosen workspace-
+        relative restrictions that exist for multi-tenant hosted
+        deployments, not for single-task Harbor runs.
+        """
+        config = json.dumps(
+            {
+                "tools": {
+                    "fs": {"workspaceOnly": False},
+                    "exec": {"applyPatch": {"workspaceOnly": False}},
+                }
+            }
+        )
+        return (
+            'mkdir -p "$HOME/.openclaw" && '
+            f'printf %s {shlex.quote(config)} > "$HOME/.openclaw/openclaw.json" && '
+            'chmod 600 "$HOME/.openclaw/openclaw.json"'
+        )
+
     def _build_inject_auth_profiles_command(self, b64: str) -> str:
         """Decode base64 auth-profiles.json into the agent's auth dir.
 
@@ -217,6 +262,15 @@ class OpenClaw(BaseInstalledAgent):
                 "--non-interactive"
             ),
             env=env,
+        )
+
+        # Grant the agent full fs + exec permissions inside the container
+        # (workspaceOnly=false). Must run after `agents add` so the
+        # ~/.openclaw directory exists. See
+        # _build_write_openclaw_config_command docstring for rationale.
+        await self.exec_as_agent(
+            environment,
+            command=(f"set -euo pipefail; {self._build_write_openclaw_config_command()}"),
         )
 
         auth_b64 = self._resolve_auth_profiles_b64()

@@ -139,6 +139,31 @@ class TestMemoryAndPersonalityCommands:
         assert "-maxdepth 1" in cmd
 
 
+class TestOpenClawConfigInjection:
+    """_build_write_openclaw_config_command writes the permissive
+    tools.fs + tools.exec.applyPatch workspaceOnly=false config so
+    tasks that need to read/write outside $HOME/openclaw-ws don't
+    hit OpenClaw's workspace-only guard."""
+
+    def test_config_command_writes_to_home(self, temp_dir):
+        agent = OpenClaw(
+            logs_dir=temp_dir,
+            model_name="openrouter/anthropic/claude-sonnet-4",
+        )
+        cmd = agent._build_write_openclaw_config_command()
+        # Writes to $HOME/.openclaw/openclaw.json
+        assert 'mkdir -p "$HOME/.openclaw"' in cmd
+        assert '"$HOME/.openclaw/openclaw.json"' in cmd
+        # chmod tightens perms to 600
+        assert "chmod 600" in cmd
+        # Config JSON is embedded (via shlex-quoted arg to printf)
+        assert '"tools"' in cmd
+        assert '"fs"' in cmd
+        assert '"workspaceOnly": false' in cmd
+        assert '"exec"' in cmd
+        assert '"applyPatch"' in cmd
+
+
 class TestPopulateContextPostRun:
     """populate_context_post_run() parses events.jsonl usage into context."""
 
