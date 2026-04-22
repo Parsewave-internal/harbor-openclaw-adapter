@@ -1,7 +1,7 @@
 [project]
 name = "harbor-openclaw"
-version = "0.1.5"
-description = "OpenClaw agent adapter for Harbor — a standalone shim for clean upstream Harbor, until the native integration (harbor-framework/harbor#1490) merges."
+version = "0.1.6"
+description = "OpenClaw agent adapter for Harbor — run OpenClaw against Harbor tasks via --agent-import-path."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
@@ -21,7 +21,6 @@ dependencies = ["harbor>=0.4"]
 [project.urls]
 Homepage = "https://github.com/Parsewave-internal/harbor-openclaw-adapter"
 Source = "https://github.com/Parsewave-internal/harbor-openclaw-adapter"
-"Upstream PR" = "https://github.com/harbor-framework/harbor/pull/1490"
 OpenClaw = "https://github.com/openclaw/openclaw"
 
 [build-system]

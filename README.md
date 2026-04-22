@@ -2,11 +2,9 @@
 
 OpenClaw agent adapter for [Harbor](https://github.com/harbor-framework/harbor).
 
-A standalone shim so users on the upstream `pip install harbor` can run the
-[OpenClaw](https://github.com/openclaw/openclaw) agent against Harbor tasks
-*today*, before the native integration
-([harbor-framework/harbor#1490](https://github.com/harbor-framework/harbor/pull/1490))
-merges.
+Run the [OpenClaw](https://github.com/openclaw/openclaw) agent against
+Harbor tasks on the upstream `pip install harbor` by supplying
+`--agent-import-path harbor_openclaw:OpenClaw`.
 
 ## Install
 
@@ -123,16 +121,6 @@ harbor run \
   -p path/to/task \
   -m openai-codex/gpt-5.4 \
   --ae OPENAI_API_KEY=$OPENAI_API_KEY
-```
-
-## Migration after PR merge
-
-Once [harbor-framework/harbor#1490](https://github.com/harbor-framework/harbor/pull/1490)
-lands on PyPI, you no longer need this package. Drop the
-`--agent-import-path` flag and pass `-a openclaw`:
-
-```bash
-harbor run -a openclaw -p path/to/task -m openai-codex/gpt-5.4
 ```
 
 ## Development

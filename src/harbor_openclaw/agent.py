@@ -9,10 +9,6 @@ Run the OpenClaw agent (https://github.com/openclaw/openclaw):
     at files in the Harbor agent logs dir.
   - Sessions land under ``~/.openclaw/agents/<id>/sessions/*.jsonl``; we copy
     them into ``logs_dir/session.jsonl`` after the run.
-
-This package is a standalone shim so users on clean upstream Harbor can run
-OpenClaw before https://github.com/harbor-framework/harbor/pull/1490 merges.
-After the PR merges, ``-a openclaw`` works without this package.
 """
 
 import json
@@ -186,16 +182,14 @@ class OpenClaw(BaseInstalledAgent):
 
         OpenClaw gates some tool surfaces (fs read/write/apply_patch,
         exec applyPatch, PDF processing) on a ``workspaceOnly`` flag.
-        Task authors have hit tool failures without an explicit config
-        and have been patching each task's Dockerfile (openclaw-tasks
-        PR #31). The adapter centralises that fix.
+        We set it false at the adapter level so task authors don't
+        have to duplicate the fix in each task's Dockerfile.
 
         Why read-modify-write, not overwrite: ``openclaw agents add``
         merges its per-agent registry into the SAME ``openclaw.json``.
-        Earlier adapter releases used a raw ``printf > file`` which
-        either wiped the registry (if written after ``agents add``) or
-        nuked any pre-existing config from the task Dockerfile. This
-        version shells out to a short Python snippet that:
+        A raw ``printf > file`` would either wipe that registry (if
+        written after ``agents add``) or nuke any pre-existing task-
+        level config. The embedded Python snippet instead:
 
         - Reads the file if present.
         - ``setdefault``-chains into ``tools.fs`` and
@@ -246,15 +240,9 @@ class OpenClaw(BaseInstalledAgent):
         agent_id = self._AGENT_ID
         env = self._env_for_openclaw()
 
-        # Write our permissive openclaw.json FIRST — before
-        # `openclaw agents add`. Ordering matters: `agents add` merges
-        # its per-agent registry entry into openclaw.json. If we
-        # wrote our config after `agents add`, we would wipe the
-        # registry and `openclaw agent --agent harbor` would fail
-        # with "Unknown agent id harbor" (observed in v0.1.3).
-        # Writing our config first means `agents add` sees it and
-        # merges on top, same as the pre-adapter task-Dockerfile
-        # workaround from openclaw-tasks PR #31.
+        # Write our permissive openclaw.json before `openclaw agents
+        # add`. The read-modify-write helper below also tolerates the
+        # reverse order; writing first keeps the sequence explicit.
         await self.exec_as_agent(
             environment,
             command=(f"set -euo pipefail; {self._build_write_openclaw_config_command()}"),
