@@ -181,49 +181,46 @@ class OpenClaw(BaseInstalledAgent):
         return None
 
     def _build_write_openclaw_config_command(self) -> str:
-        """Write a global openclaw.json granting the in-container agent
-        full fs + exec permissions.
+        """Read-modify-write the global ``openclaw.json`` to grant the
+        agent full fs + exec permissions without clobbering other keys.
 
-        OpenClaw ships with some tool surfaces (fs read/write/apply_patch,
-        exec applyPatch, PDF processing) that are gated by a
-        ``workspaceOnly`` flag. Even though ``workspaceOnly`` defaults to
-        false, we write it explicitly so:
+        OpenClaw gates some tool surfaces (fs read/write/apply_patch,
+        exec applyPatch, PDF processing) on a ``workspaceOnly`` flag.
+        Task authors have hit tool failures without an explicit config
+        and have been patching each task's Dockerfile (openclaw-tasks
+        PR #31). The adapter centralises that fix.
 
-        - Running as a non-default user inside the container doesn't
-          accidentally inherit a stricter policy.
-        - Future OpenClaw versions that flip the default cannot silently
-          break existing Harbor tasks.
-        - Task authors see "the agent has permissions X, Y, Z" as an
-          adapter-level guarantee, not something each task's Dockerfile
-          has to duplicate (which is what the openclaw-tasks PR #31
-          workaround was doing per-task).
+        Why read-modify-write, not overwrite: ``openclaw agents add``
+        merges its per-agent registry into the SAME ``openclaw.json``.
+        Earlier adapter releases used a raw ``printf > file`` which
+        either wiped the registry (if written after ``agents add``) or
+        nuked any pre-existing config from the task Dockerfile. This
+        version shells out to a short Python snippet that:
 
-        Scope:
+        - Reads the file if present.
+        - ``setdefault``-chains into ``tools.fs`` and
+          ``tools.exec.applyPatch``.
+        - Writes only the two ``workspaceOnly: false`` flags,
+          preserving every other key.
 
-        - ``tools.fs.workspaceOnly: false`` — agent may read/write
-          outside its own workspace. Required for tasks that use
-          ``/data/*`` or ``/app/*`` scratch spaces.
-        - ``tools.exec.applyPatch.workspaceOnly: false`` — agent may
-          ``apply_patch`` outside workspace (same rationale).
-
-        All agent activity is still confined to the container, which is
-        the real security boundary. These flags only loosen workspace-
-        relative restrictions that exist for multi-tenant hosted
-        deployments, not for single-task Harbor runs.
+        Agent activity is still confined to the container — the real
+        security boundary. These flags only loosen workspace-relative
+        restrictions that exist for multi-tenant hosted deployments,
+        not for single-task Harbor runs.
         """
-        config = json.dumps(
-            {
-                "tools": {
-                    "fs": {"workspaceOnly": False},
-                    "exec": {"applyPatch": {"workspaceOnly": False}},
-                }
-            }
+        py = (
+            "import json, os, pathlib; "
+            'p = pathlib.Path(os.path.expanduser("~/.openclaw/openclaw.json")); '
+            "p.parent.mkdir(parents=True, exist_ok=True); "
+            "raw = p.read_text() if p.is_file() else ''; "
+            "cfg = json.loads(raw) if raw.strip() else {}; "
+            'cfg.setdefault("tools", {}).setdefault("fs", {})["workspaceOnly"] = False; '
+            'cfg.setdefault("tools", {}).setdefault("exec", {})'
+            '.setdefault("applyPatch", {})["workspaceOnly"] = False; '
+            "p.write_text(json.dumps(cfg, indent=2)); "
+            "os.chmod(p, 0o600)"
         )
-        return (
-            'mkdir -p "$HOME/.openclaw" && '
-            f'printf %s {shlex.quote(config)} > "$HOME/.openclaw/openclaw.json" && '
-            'chmod 600 "$HOME/.openclaw/openclaw.json"'
-        )
+        return f"python3 -c {shlex.quote(py)}"
 
     def _build_inject_auth_profiles_command(self, b64: str) -> str:
         """Decode base64 auth-profiles.json into the agent's auth dir.

@@ -16,4 +16,4 @@ merges, ``-a openclaw`` works without this package.
 from harbor_openclaw.agent import OpenClaw
 
 __all__ = ["OpenClaw"]
-__version__ = "0.1.4"
+__version__ = "0.1.5"

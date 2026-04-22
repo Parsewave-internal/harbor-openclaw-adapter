@@ -1,6 +1,6 @@
 [project]
 name = "harbor-openclaw"
-version = "0.1.4"
+version = "0.1.5"
 description = "OpenClaw agent adapter for Harbor — a standalone shim for clean upstream Harbor, until the native integration (harbor-framework/harbor#1490) merges."
 readme = "README.md"
 requires-python = ">=3.12"

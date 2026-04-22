@@ -1,6 +1,7 @@
 """Unit tests for the OpenClaw agent."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -140,28 +141,85 @@ class TestMemoryAndPersonalityCommands:
 
 
 class TestOpenClawConfigInjection:
-    """_build_write_openclaw_config_command writes the permissive
-    tools.fs + tools.exec.applyPatch workspaceOnly=false config so
-    tasks that need to read/write outside $HOME/openclaw-ws don't
-    hit OpenClaw's workspace-only guard."""
+    """_build_write_openclaw_config_command produces a read-modify-
+    write Python snippet that sets ``tools.fs.workspaceOnly=false``
+    and ``tools.exec.applyPatch.workspaceOnly=false`` in
+    ``~/.openclaw/openclaw.json`` without clobbering other keys."""
 
-    def test_config_command_writes_to_home(self, temp_dir):
+    def _run_snippet(self, cmd: str, home: Path) -> Path:
+        """Helper: execute the shell command in a subprocess with a
+        custom HOME, returning the path to the resulting
+        openclaw.json."""
+        import subprocess
+
+        res = subprocess.run(
+            cmd,
+            shell=True,
+            env={**os.environ, "HOME": str(home)},
+            capture_output=True,
+            text=True,
+        )
+        assert res.returncode == 0, f"command failed: {res.stderr}\nstdout: {res.stdout}"
+        return home / ".openclaw" / "openclaw.json"
+
+    def test_creates_file_when_missing(self, temp_dir):
         agent = OpenClaw(
             logs_dir=temp_dir,
             model_name="openrouter/anthropic/claude-sonnet-4",
         )
         cmd = agent._build_write_openclaw_config_command()
-        # Writes to $HOME/.openclaw/openclaw.json
-        assert 'mkdir -p "$HOME/.openclaw"' in cmd
-        assert '"$HOME/.openclaw/openclaw.json"' in cmd
-        # chmod tightens perms to 600
-        assert "chmod 600" in cmd
-        # Config JSON is embedded (via shlex-quoted arg to printf)
-        assert '"tools"' in cmd
-        assert '"fs"' in cmd
-        assert '"workspaceOnly": false' in cmd
-        assert '"exec"' in cmd
-        assert '"applyPatch"' in cmd
+        path = self._run_snippet(cmd, temp_dir)
+        cfg = json.loads(path.read_text())
+        assert cfg["tools"]["fs"]["workspaceOnly"] is False
+        assert cfg["tools"]["exec"]["applyPatch"]["workspaceOnly"] is False
+        # File is chmod 600
+        mode = path.stat().st_mode & 0o777
+        assert mode == 0o600
+
+    def test_merges_into_existing_config_without_clobbering(self, temp_dir):
+        """If ``openclaw.json`` already has a per-agent registry and a
+        provider default, the snippet must preserve them."""
+        agent = OpenClaw(
+            logs_dir=temp_dir,
+            model_name="openrouter/anthropic/claude-sonnet-4",
+        )
+        # Pre-populate with an existing config (e.g. what `openclaw
+        # agents add` would leave behind, or what a task's Dockerfile
+        # might ship).
+        existing_path = temp_dir / ".openclaw" / "openclaw.json"
+        existing_path.parent.mkdir(parents=True)
+        existing = {
+            "agents": {"harbor": {"model": "openai-codex/gpt-5.4"}},
+            "providers": {"openai-codex": {"timeout": 300}},
+            "tools": {"fs": {"someOtherFlag": True}},
+        }
+        existing_path.write_text(json.dumps(existing))
+        cmd = agent._build_write_openclaw_config_command()
+        path = self._run_snippet(cmd, temp_dir)
+        cfg = json.loads(path.read_text())
+        # Our flags are set.
+        assert cfg["tools"]["fs"]["workspaceOnly"] is False
+        assert cfg["tools"]["exec"]["applyPatch"]["workspaceOnly"] is False
+        # Other keys survive.
+        assert cfg["agents"]["harbor"]["model"] == "openai-codex/gpt-5.4"
+        assert cfg["providers"]["openai-codex"]["timeout"] == 300
+        # Pre-existing siblings inside tools.fs also survive.
+        assert cfg["tools"]["fs"]["someOtherFlag"] is True
+
+    def test_handles_empty_file(self, temp_dir):
+        agent = OpenClaw(
+            logs_dir=temp_dir,
+            model_name="openrouter/anthropic/claude-sonnet-4",
+        )
+        # A blank/zero-byte openclaw.json should still produce a
+        # valid JSON result.
+        existing_path = temp_dir / ".openclaw" / "openclaw.json"
+        existing_path.parent.mkdir(parents=True)
+        existing_path.write_text("")
+        cmd = agent._build_write_openclaw_config_command()
+        path = self._run_snippet(cmd, temp_dir)
+        cfg = json.loads(path.read_text())
+        assert cfg["tools"]["fs"]["workspaceOnly"] is False
 
 
 class TestPopulateContextPostRun:
