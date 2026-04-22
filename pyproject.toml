@@ -1,6 +1,6 @@
 [project]
 name = "harbor-openclaw"
-version = "0.1.6"
+version = "0.1.7"
 description = "OpenClaw agent adapter for Harbor — run OpenClaw against Harbor tasks via --agent-import-path."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -12,4 +12,4 @@ Example::
 from harbor_openclaw.agent import OpenClaw
 
 __all__ = ["OpenClaw"]
-__version__ = "0.1.6"
+__version__ = "0.1.7"
