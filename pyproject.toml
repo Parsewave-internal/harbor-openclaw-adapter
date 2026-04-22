@@ -1,0 +1,43 @@
+[project]
+name = "harbor-openclaw"
+version = "0.1.0"
+description = "OpenClaw agent adapter for Harbor — a standalone shim for clean upstream Harbor, until the native integration (harbor-framework/harbor#1490) merges."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Parsewave" }]
+keywords = ["harbor", "openclaw", "agent", "llm", "evaluation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = ["harbor>=0.4"]
+
+[project.urls]
+Homepage = "https://github.com/Parsewave-internal/harbor-openclaw-adapter"
+Source = "https://github.com/Parsewave-internal/harbor-openclaw-adapter"
+"Upstream PR" = "https://github.com/harbor-framework/harbor/pull/1490"
+OpenClaw = "https://github.com/openclaw/openclaw"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/harbor_openclaw"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=1.0", "ruff>=0.8"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
