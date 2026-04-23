@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -140,6 +141,14 @@ class TestMemoryAndPersonalityCommands:
         assert "-maxdepth 1" in cmd
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "OpenClaw only ever runs inside a Linux Docker container, so the "
+        "config-injection snippet is not tested on Windows (its POSIX paths "
+        "and chmod 0o600 do not round-trip on the Windows filesystem)."
+    ),
+)
 class TestOpenClawConfigInjection:
     """_build_write_openclaw_config_command produces a read-modify-
     write Python snippet that sets ``tools.fs.workspaceOnly=false``,
@@ -148,14 +157,28 @@ class TestOpenClawConfigInjection:
     without clobbering other keys."""
 
     def _run_snippet(self, cmd: str, home: Path) -> Path:
-        """Helper: execute the shell command in a subprocess with a
-        custom HOME, returning the path to the resulting
-        openclaw.json."""
+        """Helper: execute the Python snippet from the command in a
+        subprocess with a custom HOME, returning the path to the
+        resulting openclaw.json.
+
+        The adapter builds a POSIX-quoted ``python3 -c '<code>'`` string
+        intended for the in-container shell. To keep the test portable
+        we parse that string with ``shlex.split`` and invoke the
+        snippet directly via ``sys.executable``, bypassing the host
+        shell entirely (otherwise Windows cmd.exe would mis-parse the
+        POSIX single-quoting and fail with a SyntaxError).
+        """
+        import shlex
         import subprocess
+        import sys
+
+        parts = shlex.split(cmd)
+        # Expected shape: ["python3", "-c", "<python code>"].
+        assert parts[:2] == ["python3", "-c"], f"unexpected command shape: {parts[:2]}"
+        py_code = parts[2]
 
         res = subprocess.run(
-            cmd,
-            shell=True,
+            [sys.executable, "-c", py_code],
             env={**os.environ, "HOME": str(home)},
             capture_output=True,
             text=True,
